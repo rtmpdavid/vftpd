@@ -1,6 +1,8 @@
 #ifndef UTIL_H
 #define UTIL_H
 
+#define MAX(X,Y) ((X) > (Y)?(X):(Y))
+
 #include <stdio.h>
 #include <errno.h>
 #include <string.h>

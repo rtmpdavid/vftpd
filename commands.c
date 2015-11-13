@@ -75,8 +75,19 @@ int command_not_implemented(psession session, const char* arg __attribute__ ((un
 
 int command_abor(psession session, const char* arg __attribute__ ((unused)))
 {
-  ftp_send_status(session, NOT_IMPLEMENTED, "Command not implemented");
-  return CMD_NOT_IMPLEMENTED;
+  int rv = 0;
+  switch(session->xfer)
+  {
+  case XFER_RETR:
+    xfer_done(session, XFER_ABORTED);
+    rv = CMD_DONE;
+    break;
+  default:
+    ftp_send_status(session, NOT_IMPLEMENTED, "Command not implemented");
+    rv = CMD_ERR;
+    break;
+  }
+  return rv;
 }
 
 int command_acct(psession session, const char* arg __attribute__ ((unused)))
@@ -263,7 +274,6 @@ int command_pasv(psession session, const char* arg __attribute__ ((unused)))
 int command_port(psession session, const char* arg)
 {
   int status;
-
   struct sockaddr *addr = (struct sockaddr *)(session->data_addr);
   socklen_t *socklen = &(session->data_addrlen);
 
@@ -317,20 +327,8 @@ int command_retr(psession session, const char* arg)
   if(open_data_con(session))
     return CMD_ERR;
 
-  char buff[1024];
-  size_t read_num = 0;
-  for(;;)
-  {
-    read_num = fread(buff, sizeof(char), 1024, send_file);
-    int rv = send(session->data_socket, &buff, read_num, 0);
-    if(rv == -1 || feof(send_file))
-      break;
-  }
-
-
-  fclose(send_file);
-  ftp_send_status(session, ACTION_OK_CLOSING, "File transfer complete");
-  close_data_con(session);
+  session->xfer = XFER_RETR;
+  session->xfer_file = send_file;
   return CMD_DONE;
 }
 
@@ -456,8 +454,6 @@ int command_size(psession session, const char* arg)
     return CMD_ERR;
   }
 
-  size_t size = file_size(file);
-  sprintf(ret, "%lu", size);
   ftp_send_status(session, FILE_STAT, ret);
   return CMD_DONE;
 }

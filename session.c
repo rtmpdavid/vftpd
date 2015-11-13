@@ -2,6 +2,7 @@
 
 #include "ftp.h"
 #include "fs_util.h"
+#include "net_util.h"
 #include "util.h"
 
 #include <stdio.h>
@@ -39,6 +40,7 @@ int add_session(int listener, psession* sessions, int *n_sessions, const char* _
     new_session->host_ip = _host;
     new_session->bind_ip = _bind;
 
+    new_session->blocks_transferred = 0;
     new_session->data_socket = -1;
     new_session->pasv_listener = -1;
     new_session->data_addr = malloc(sizeof(struct sockaddr_in));
@@ -87,5 +89,71 @@ int rem_session(int session_n, psession* sessions, int *n_sessions)
 
   (*n_sessions)-=1;
 
+  return 0;
+}
+
+int xfer_block(psession session)
+{
+  int rv = fseek(session->xfer_file, session->blocks_transferred, SEEK_SET);
+
+  if(rv)
+    return XFER_SEEK_FAILED;
+
+  uint8_t buff[MTU];
+
+  int read_num = fread(buff, 1, MTU, session->xfer_file);
+
+  if(rv < 0)
+    return XFER_READ_FAILED;
+
+  int send_num = send(session->data_socket, buff, read_num, 0);
+
+  if(send_num < 0)
+  {
+    printf("Failed to send data\n");
+    return XFER_SEND_FAILED;
+  }
+
+  session->blocks_transferred += send_num;
+
+  if(feof(session->xfer_file))
+    return XFER_DONE;
+
+  return 0;
+}
+
+int xfer_done(psession session, int status)
+{
+  printf("Transferred %lu bytes\n", session->blocks_transferred);
+
+  session->xfer = XFER_NONE;
+  session->blocks_transferred = 0;
+  close_data_con(session);
+
+  switch(status)
+  {
+  case XFER_SEEK_FAILED:
+  case XFER_READ_FAILED:
+    ftp_send_status(session, FILE_ACTION_ERROR, "Error reading file");
+    break;
+  case XFER_SEND_FAILED:
+    ftp_send_status(session, CON_CLOSED_XFER_ABORTED, "Error sending data");
+    break;
+  case XFER_DONE:
+    ftp_send_status(session, ACTION_OK_CLOSING, "File transfer complete");
+    break;
+  case XFER_ABORTED:
+    {
+      fseek(session->xfer_file, 0L, SEEK_END);
+      size_t size = ftell(session->xfer_file);
+      
+      if(session->blocks_transferred <  size)
+	ftp_send_status(session, CON_CLOSED_XFER_ABORTED, "File transfer aborted");
+      ftp_send_status(session, ACTION_OK_CLOSING, "Transfer done");
+    }
+    break;
+  }
+
+  fclose(session->xfer_file);
   return 0;
 }

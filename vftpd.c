@@ -57,27 +57,33 @@ int main(int argc, char**argv)
   psession sessions[MAX_SESSIONS];
   int session_count = 0;
 
-  fd_set rfds;
+  fd_set rfds, xwfds;
   struct timeval tv;
   int retval;
 
   for(;;)
   {
-    tv.tv_sec = 1;
+    tv.tv_sec = 5;
     tv.tv_usec = 100;
 
     FD_ZERO(&rfds);
+    FD_ZERO(&xwfds);
 
     FD_SET(listener_socket, &rfds);
     int max_fd = listener_socket;
     for(int i = 0; i < session_count; i++)
     {
-      if((sessions[i]->socket) > max_fd)
-	max_fd = sessions[i]->socket;
+      max_fd = MAX(max_fd, sessions[i]->socket);
       FD_SET(sessions[i]->socket, &rfds);
+
+      if(sessions[i]->xfer == XFER_RETR)
+      {
+	FD_SET(sessions[i]->data_socket, &xwfds);
+	max_fd = MAX(max_fd, sessions[i]->data_socket);
+      }
     }
 
-    retval = select(max_fd+1, &rfds, NULL, NULL, &tv);
+    retval = select(max_fd+1, &rfds, &xwfds, NULL, &tv);
 
     if(!retval)
       continue;
@@ -99,17 +105,29 @@ int main(int argc, char**argv)
 	  printf("Connection terminated (%p).\n", (sessions+i));
 	  rem_session(i, sessions, &session_count);
 	  i--;
-	  continue;
 	}
+	else
+	{
+	  char* cmd_arg = NULL;
+	  command_handler handler = command_parse(cmd, &cmd_arg);
+	  printf("cmd: %s\targ: %s\t%s\n", cmd, cmd_arg, (handler == &command_not_implemented)?"Not implemented":"OK");
 
-	char* cmd_arg = NULL;
-	command_handler handler = command_parse(cmd, &cmd_arg);
-	printf("cmd: %s\targ: %s\t%s\n", cmd, cmd_arg, (handler == &command_not_implemented)?"Not implemented":"OK");
-
-	int status = handler(sess, cmd_arg);
+	  int status = handler(sess, cmd_arg);
 	  
-	if(status == CMD_DONE_QUIT || status == CMD_ERR_QUIT)
-	  rem_session(i, sessions, &session_count);
+	  if(status == CMD_DONE_QUIT || status == CMD_ERR_QUIT)
+	    rem_session(i, sessions, &session_count);
+	}
+      }
+
+      if(sess->xfer == XFER_RETR)
+      {
+	if(FD_ISSET(sess->data_socket, &xwfds))
+	{
+	  int xfer_status = xfer_block(sess);
+
+	  if(xfer_status)
+	    xfer_done(sess, xfer_status);
+	}
       }
     }
   }

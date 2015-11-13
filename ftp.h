@@ -31,8 +31,10 @@ int send_record(psession session, const char* record, int record_length);
 #define ALREADY_OPEN_SENDING    125
 
 #define CANT_OPEN               425
+#define CON_CLOSED_XFER_ABORTED 426
 
 #define FILE_ACTION_FILE_ANAVAILABLE 450
+#define FILE_ACTION_ERROR       450
 #define LOCAL_ERROR             451
 
 #define ACTION_OK_CLOSING       226

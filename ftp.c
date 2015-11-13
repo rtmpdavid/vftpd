@@ -79,7 +79,6 @@ int open_data_con(psession session)
       ftp_send_status(session, CANT_OPEN, "failed to open data connection");
       return -1;
     }
-  
     if(connect(session->data_socket, session->data_addr, session->data_addrlen) == -1)
     {
       print_err("Failed to connect socket");
@@ -101,7 +100,8 @@ int open_data_con(psession session)
 int close_data_con(psession session)
 {
   printf("Closed data connection socket %i\n", session->data_socket);
-  int rv = close(session->data_socket);
+  int rv = shutdown(session->data_socket, SHUT_RDWR);
+  //int rv = close(session->data_socket);
 
   session->data_socket = -1;
   
