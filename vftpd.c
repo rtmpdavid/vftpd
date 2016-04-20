@@ -89,7 +89,7 @@ int main(int argc, char**argv)
       continue;
 
     if(FD_ISSET(listener_socket ,&rfds))
-      switch(add_session(listener_socket, sessions, &session_count, server_dir, host, bind));
+      add_session(listener_socket, sessions, &session_count, server_dir, host, bind);
 
     char cmd[MAX_CMD_LEN];
     for(int i = 0; i < session_count; i++)
